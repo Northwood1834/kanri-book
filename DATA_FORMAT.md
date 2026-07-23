@@ -1,5 +1,8 @@
 # Data and compatibility contract
 
+Portable backup and future cross-app consolidation are specified in
+[`BACKUP_DESIGN.md`](BACKUP_DESIGN.md).
+
 ## Storage envelope
 
 `管理ブック` stores data in the same-origin IndexedDB database
