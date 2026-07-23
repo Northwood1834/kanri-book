@@ -26,3 +26,8 @@
 行ってください。ローカル確認では `python3 -m http.server 8080` を使えます。
 
 保存形式と回線チェック連携は [`DATA_FORMAT.md`](DATA_FORMAT.md)、暗号化の設計と限界は [`SECURITY.md`](SECURITY.md)、共通バックアップと将来のデータ統合は [`BACKUP_DESIGN.md`](BACKUP_DESIGN.md) を参照してください。
+
+## License
+
+`author.png` を除きMIT Licenseです。画像の扱いと公式公開先は
+[`NOTICE.md`](NOTICE.md)、出自情報は [`PROVENANCE.md`](PROVENANCE.md) を参照してください。
