@@ -1,0 +1,14 @@
+{
+  "name": "管理ブック。",
+  "short_name": "管理ブック",
+  "description": "携帯番号と契約情報を、端末の中だけに暗号化して記録する管理ノートです。",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F1F7F2",
+  "theme_color": "#F1F7F2",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
