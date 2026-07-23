@@ -5,8 +5,28 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 const DB_NAME = "kanri-book-vault", STORE = "secure", RECORD = "vault", KEY_RECORD = "device-key";
 const AAD_PREFIX = "kanri-book|format-2|";
 const EMOJIS = ["🐶","🐱","🐰","🦊","🐻","🐼","🐸","🐧","🦉","🦔","🐢","🐙","🐳","🦋","🌵","🍀","🌻","🍎","🍋","🍇","🍙","🍩","☕","🎈","🎧","🚲","🚗","✈️","🌙","⭐","☁️","🔥","💧","🎲","🧸","📚"];
-let db, key = null, book = null, unlockCode = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve();
-const emptyBook = () => ({ schema:"kanri-book", schemaVersion:1, version:1, lines:[], sets:[], devices:[], settings:{ autoLock:15 }, createdAt:Date.now(), updatedAt:Date.now() });
+const CARRIERS = {
+  "docomo": ["ドコモ MAX","ドコモ ポイ活 MAX","ドコモ ポイ活 20","ドコモ mini"],
+  "ahamo": ["ahamo"],
+  "au": ["auバリューリンクプラン","auバリューリンク マネ活2","使い放題MAX＋ 5G／4G","スマホミニプラン＋"],
+  "UQ mobile": ["コミコミプランバリュー","トクトクプラン2"],
+  "povo": ["povo2.0"],
+  "SoftBank": ["ペイトク２","テイガク無制限","ミニフィット２","スマホデビュープラン＋"],
+  "Y!mobile": ["シンプル3 S","シンプル3 M","シンプル3 L"],
+  "LINEMO": ["LINEMOベストプラン","LINEMOベストプランV"],
+  "楽天モバイル": ["Rakuten最強プラン","Rakuten最強U-NEXT"],
+  "IIJmio": ["ギガプラン"],
+  "mineo": ["マイピタ","マイそく スタンダード","マイそく プレミアム","マイそく ライト"],
+  "日本通信SIM": ["合理的シンプル290プラン","合理的みんなのプラン","合理的50GBプラン"],
+  "NUROモバイル": ["NEOプラン","NEOプランW","VMプラン","VLプラン"],
+  "BIGLOBEモバイル": ["プランS","プランR","プランM"],
+  "HISモバイル": ["自由自在2.0プラン"],
+  "イオンモバイル": ["音声プラン","シェアプラン","やさしいプラン"],
+  "J:COM MOBILE": ["J:COM MOBILE Aプラン ST","J:COM MOBILE Aプラン SU"]
+};
+const DEFAULT_REVIEW_DAYS = Object.fromEntries([...Object.keys(CARRIERS),"other"].map(name=>[name,180]));
+let db, key = null, book = null, unlockCode = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve(), formReviewAuto = true;
+const emptyBook = () => ({ schema:"kanri-book", schemaVersion:1, version:1, lines:[], sets:[], devices:[], settings:{ autoLock:15,reviewDays:{...DEFAULT_REVIEW_DAYS} }, createdAt:Date.now(), updatedAt:Date.now() });
 
 const openDB = () => new Promise((resolve,reject) => {
   const req = indexedDB.open(DB_NAME, 1);
@@ -51,7 +71,7 @@ async function init(){
 }
 function show(id){ ["setup-view","unlock-view","app-view"].forEach(x=>$(x).hidden=x!==id); document.body.classList.toggle("unlocked",id==="app-view"); }
 function showFatal(message){ show("setup-view"); $("setup-view").innerHTML=`<h2>管理ブックを開けません</h2><p class="lead" style="margin-top:.6rem"></p>`; $("setup-view").querySelector("p").textContent=message; }
-function enterApp(){ book.sets=Array.isArray(book.sets)?book.sets:[]; book.devices=Array.isArray(book.devices)?book.devices:[]; show("app-view"); render(); resetIdle(); }
+function enterApp(){ book.sets=Array.isArray(book.sets)?book.sets:[];book.devices=Array.isArray(book.devices)?book.devices:[];book.settings=book.settings||{};book.settings.reviewDays={...DEFAULT_REVIEW_DAYS,...(book.settings.reviewDays||{})};show("app-view");render();resetIdle(); }
 function lock(){ key=null; book=null; detailId=null; clearTimeout(idleTimer);document.querySelectorAll(".detail-secret code").forEach(x=>x.textContent="");document.querySelectorAll("dialog[open]").forEach(d=>d.close());show("unlock-view");prepareUnlock(); }
 function resetIdle(){ if(!book)return; clearTimeout(idleTimer); const min=Number(book.settings?.autoLock??15); if(min>0) idleTimer=setTimeout(lock,min*60000); }
 ["pointerdown","keydown"].forEach(type=>document.addEventListener(type,resetIdle,{passive:true}));
@@ -69,7 +89,15 @@ const dateText = s => { if(!s)return"未記録"; const [y,m,d]=s.split("-"); ret
 const daysFrom = s => s ? Math.floor((new Date().setHours(0,0,0,0)-new Date(s+"T00:00:00"))/86400000) : null;
 const daysUntil = s => s ? Math.ceil((new Date(s+"T00:00:00")-new Date().setHours(0,0,0,0))/86400000) : null;
 const daysBetween = (start,end) => { if(!start||!end)return null;const a=start.split("-").map(Number),b=end.split("-").map(Number);return Math.round((Date.UTC(b[0],b[1]-1,b[2])-Date.UTC(a[0],a[1]-1,a[2]))/86400000); };
-function updateReviewDayCount(){const n=daysBetween($("contract-date").value,$("next-date").value),el=$("review-day-count");el.textContent=n===null?"契約日と見直し日を入れると、経過日数を表示します。":n<0?"見直し日が契約日より前になっています。":`契約から ${n.toLocaleString("ja-JP")} 日`;el.style.color=n<0?"var(--danger)":"";}
+const addDays = (start,count) => {if(!start)return"";const a=start.split("-").map(Number),d=new Date(Date.UTC(a[0],a[1]-1,a[2]+Number(count)));return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;};
+const selectedCarrierKey = () => $("carrier").value||"other";
+const reviewDaysFor = carrierKey => Number(book.settings.reviewDays?.[carrierKey]??180);
+function updateReviewDayCount(){const n=daysBetween($("contract-date").value,$("next-date").value),el=$("review-day-count"),days=reviewDaysFor(selectedCarrierKey());el.textContent=n===null?`設定中の目安：契約から ${days} 日`:n<0?"見直し日が契約日より前になっています。":`契約から ${n.toLocaleString("ja-JP")} 日${formReviewAuto?"（設定中の目安）":""}`;el.style.color=n<0?"var(--danger)":"";}
+function applyReviewDate(force=false){const start=$("contract-date").value;if(!start)return;if(force||formReviewAuto||!$("next-date").value){$("next-date").value=addDays(start,reviewDaysFor(selectedCarrierKey()));formReviewAuto=true}updateReviewDayCount();}
+function fillCarrierSelect(line){const select=$("carrier");select.replaceChildren(new Option("選択",""));Object.keys(CARRIERS).forEach(name=>select.add(new Option(name,name)));select.add(new Option("その他","other"));const known=line?.carrierKey&&CARRIERS[line.carrierKey]?line.carrierKey:CARRIERS[line?.carrier]?line.carrier:line?.carrier?"other":"";select.value=known;$("carrier-custom").value=known==="other"?(line?.carrier||""):"";$("carrier-custom-field").hidden=known!=="other";fillPlanSelect(line?.plan||"")}
+function fillPlanSelect(selected=""){const carrier=$("carrier").value,plans=CARRIERS[carrier]||[],select=$("plan");select.replaceChildren(new Option("選択",""));plans.forEach(name=>select.add(new Option(name,name)));select.add(new Option("その他","__other__"));if(selected&&plans.includes(selected)){select.value=selected;$("plan-custom").value=""}else if(selected){select.value="__other__";$("plan-custom").value=selected}else{$("plan-custom").value=""}$("plan-custom-field").hidden=select.value!=="__other__";}
+function selectedCarrierName(){return $("carrier").value==="other"?$("carrier-custom").value.trim():$("carrier").value;}
+function selectedPlanName(){return $("plan").value==="__other__"?$("plan-custom").value.trim():$("plan").value;}
 const statusText = s => ({active:"利用中",planned:"MNP予定",cancelled:"終了"}[s]||"利用中");
 const escapeSearch = v => (v??"").toString().toLowerCase();
 const readSharedArray = keyName => { try { const value=JSON.parse(localStorage.getItem(keyName)); return Array.isArray(value)?value:[]; } catch { return []; } };
@@ -121,7 +149,7 @@ function makeCard(line){
 
 function openForm(line=null){
   $("line-form").reset(); $("account-list").replaceChildren(); $("option-list").replaceChildren(); $("form-error").textContent=""; $("line-id").value=line?.id||""; $("form-heading").textContent=line?"回線を編集":"回線を追加"; $("line-delete").hidden=!line;
-  const values={phone:line?.phone,nickname:line?.nickname,status:line?.status||"active",carrier:line?.carrier,holder:line?.holder,plan:line?.plan,"contract-date":line?.contractDate,store:line?.store,"next-action":line?.nextAction,"next-date":line?.nextDate,pin:line?.pin,notes:line?.notes}; Object.entries(values).forEach(([id,v])=>$(id).value=v||""); updateReviewDayCount();
+  const values={phone:line?.phone,nickname:line?.nickname,status:line?.status||"active",holder:line?.holder,"contract-date":line?.contractDate,store:line?.store,"next-action":line?.nextAction,"next-date":line?.nextDate,pin:line?.pin,notes:line?.notes}; Object.entries(values).forEach(([id,v])=>$(id).value=v||"");formReviewAuto=line?.reviewDateAuto??!line?.nextDate;fillCarrierSelect(line);if(formReviewAuto&&line?.contractDate)applyReviewDate();else updateReviewDayCount();
   fillEntitySelect("set",line?.setId); fillEntitySelect("device",line?.deviceId); syncEntityEditor("set"); syncEntityEditor("device");
   const profiles=kaisenProfiles(), select=$("kaisen-profile"); select.replaceChildren(new Option("紐づけない","")); profiles.forEach(p=>select.add(new Option(p.name,p.id))); const linkedId=line?.links?.kaisenCheckProfileId||""; if(linkedId&&!profiles.some(p=>p.id===linkedId))select.add(new Option("以前のSIM（回線チェック側で削除済み）",linkedId)); select.value=linkedId; $("kaisen-link-field").hidden=$("kaisen-link-hint").hidden=profiles.length===0&&!linkedId;
   const set=line?lineSet(line):null; $("account-list").replaceChildren(); (set?.accounts||line?.accounts||[]).forEach(addAccountRow); (line?.options||[]).forEach(addOptionRow); $("line-dialog").showModal(); setTimeout(()=>$("phone").focus(),80);
@@ -140,7 +168,11 @@ function addOptionRow(data={}){
   const name=document.createElement("label");name.className="field";name.innerHTML="<span>オプション名</span>";name.append(makeInput("option-name","補償・動画サービスなど",data.name));const date=document.createElement("label");date.className="field";date.innerHTML="<span>見直し日</span>";date.append(makeInput("option-date","",data.date,"date"));const check=document.createElement("label");check.className="check-row";const cb=document.createElement("input");cb.type="checkbox";cb.className="option-done";cb.checked=!!data.done;check.append(cb,document.createTextNode("見直し済み"));row.append(name,date,check);$("option-list").append(row);
 }
 $("account-add").addEventListener("click",()=>addAccountRow()); $("option-add").addEventListener("click",()=>addOptionRow());
-$("contract-date").addEventListener("change",updateReviewDayCount); $("next-date").addEventListener("change",updateReviewDayCount);
+$("carrier").addEventListener("change",()=>{$("carrier-custom-field").hidden=$("carrier").value!=="other";fillPlanSelect();applyReviewDate()});
+$("plan").addEventListener("change",()=>{$("plan-custom-field").hidden=$("plan").value!=="__other__"});
+$("contract-date").addEventListener("change",()=>applyReviewDate());
+$("next-date").addEventListener("change",()=>{formReviewAuto=false;updateReviewDayCount()});
+$("review-reset").addEventListener("click",()=>applyReviewDate(true));
 $("line-form").addEventListener("submit",async e=>{
   e.preventDefault(); const d=digits($("phone").value); if(d.length<10||d.length>11){$("form-error").textContent="電話番号は10〜11桁で正確に入力してください。";$("phone").focus();return} $("form-error").textContent="";
   const id=$("line-id").value||uuid(), old=book.lines.find(x=>x.id===id), now=Date.now();
@@ -151,7 +183,7 @@ $("line-form").addEventListener("submit",async e=>{
   const options=[...$("option-list").querySelectorAll(".repeat-row")].map(r=>({name:r.querySelector(".option-name").value.trim(),date:r.querySelector(".option-date").value,done:r.querySelector(".option-done").checked})).filter(o=>o.name||o.date);
   if(setId){const value={id:setId,name:$("set-name").value.trim(),email:$("set-email").value.trim(),accounts,updatedAt:now};const i=book.sets.findIndex(x=>x.id===setId);if(i<0)book.sets.push({...value,createdAt:now});else book.sets[i]={...book.sets[i],...value}}
   if(deviceId){const value={id:deviceId,name:$("device-name").value.trim(),model:$("device-model").value.trim(),imei:$("device-imei").value.trim(),eid:$("device-eid").value.trim(),updatedAt:now};const i=book.devices.findIndex(x=>x.id===deviceId);if(i<0)book.devices.push({...value,createdAt:now});else book.devices[i]={...book.devices[i],...value}}
-  const line={id,phone:$("phone").value.trim(),phoneDigits:d,nickname:$("nickname").value.trim(),status:$("status").value,carrier:$("carrier").value,holder:$("holder").value.trim(),plan:$("plan").value.trim(),contractDate:$("contract-date").value,store:$("store").value.trim(),nextAction:$("next-action").value.trim(),nextDate:$("next-date").value,pin:$("pin").value,accounts:setId?[]:accounts,setId:setId||null,deviceId:deviceId||null,options,links:{kaisenCheckProfileId:$("kaisen-profile").value||null},notes:$("notes").value.trim(),createdAt:old?.createdAt||now,updatedAt:now};
+  const line={id,phone:$("phone").value.trim(),phoneDigits:d,nickname:$("nickname").value.trim(),status:$("status").value,carrier:selectedCarrierName(),carrierKey:$("carrier").value||null,holder:$("holder").value.trim(),plan:selectedPlanName(),contractDate:$("contract-date").value,store:$("store").value.trim(),nextAction:$("next-action").value.trim(),nextDate:$("next-date").value,reviewDateAuto:formReviewAuto,pin:$("pin").value,accounts:setId?[]:accounts,setId:setId||null,deviceId:deviceId||null,options,links:{kaisenCheckProfileId:$("kaisen-profile").value||null},notes:$("notes").value.trim(),createdAt:old?.createdAt||now,updatedAt:now};
   const duplicate=book.lines.find(x=>x.id!==id&&digits(x.phone)===d); if(duplicate&&!confirm("同じ電話番号の記録があります。それでも保存しますか？"))return;
   const index=book.lines.findIndex(x=>x.id===id); if(index<0)book.lines.push(line);else book.lines[index]=line;
   const submit=e.currentTarget.querySelector('[type="submit"]');submit.disabled=true;
@@ -178,6 +210,9 @@ document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",(
 document.querySelectorAll(".filter-chip").forEach(b=>b.addEventListener("click",()=>{filter=b.dataset.filter;document.querySelectorAll(".filter-chip").forEach(x=>x.classList.toggle("active",x===b));render()}));
 
 $("settings-open").addEventListener("click",()=>$("settings-dialog").showModal());
+function renderReviewSettings(){const list=$("review-settings-list");list.replaceChildren();[...Object.keys(CARRIERS),"other"].forEach((carrier,index)=>{const row=document.createElement("div");row.className="review-setting-row";const label=document.createElement("label");label.htmlFor=`review-carrier-${index}`;label.textContent=carrier==="other"?"その他":carrier;const wrap=document.createElement("div");wrap.className="review-day-input";const input=document.createElement("input");input.id=`review-carrier-${index}`;input.className="control";input.type="number";input.inputMode="numeric";input.min="1";input.max="3650";input.required=true;input.value=reviewDaysFor(carrier);input.dataset.carrier=carrier;wrap.append(input,document.createTextNode("日"));row.append(label,wrap);list.append(row)})}
+$("review-settings-open").addEventListener("click",()=>{$("settings-dialog").close();$("review-settings-error").textContent="";renderReviewSettings();$("review-settings-dialog").showModal()});
+$("review-settings-form").addEventListener("submit",async e=>{e.preventDefault();const inputs=[...$("review-settings-list").querySelectorAll("input")],values={};for(const input of inputs){const n=Number(input.value);if(!Number.isInteger(n)||n<1||n>3650){$("review-settings-error").textContent="1日から3650日の範囲で入力してください。";input.focus();return}values[input.dataset.carrier]=n}book.settings.reviewDays=values;book.lines.forEach(line=>{if(!line.reviewDateAuto||!line.contractDate)return;const carrierKey=line.carrierKey&&values[line.carrierKey]?line.carrierKey:CARRIERS[line.carrier]?line.carrier:"other";line.nextDate=addDays(line.contractDate,values[carrierKey]??180);line.updatedAt=Date.now()});try{await persist();$("review-settings-dialog").close();render();toast("設定を保存しました")}catch{$("review-settings-error").textContent="保存できませんでした。"}});
 $("auto-lock").addEventListener("change",async e=>{book.settings.autoLock=Number(e.target.value);await persist();resetIdle();toast("設定を保存しました")});
 $("lock-now").addEventListener("click",lock);
 $("pass-change-open").addEventListener("click",()=>{$("settings-dialog").close();$("pass-error").textContent="";$("pass-dialog").showModal();runPicker("change-picker",null,async code=>{try{const old=await dbGet(),gate=await encryptPart({sequence:code},key,"gate");await dbPut({...old,gate,updatedAt:Date.now()});unlockCode=code;$("pass-dialog").close();toast("絵文字キーを変更しました")}catch{$("pass-error").textContent="変更できませんでした。";runPicker("change-picker",null,()=>{})}})});

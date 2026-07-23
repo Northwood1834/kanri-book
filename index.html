@@ -179,6 +179,11 @@ dialog::backdrop { background:rgba(38,57,44,.34); backdrop-filter:blur(3px); }
 .setting-row p { margin-top:.08rem; color:var(--muted); font-size:.65rem; }
 .setting-row select { max-width:8rem; border:1.5px solid var(--line); border-radius:.7rem; background:white; padding:.45rem; font-size:.74rem; }
 .storage-fact { margin-top:.9rem; padding:.8rem; border-radius:.8rem; background:#F6FAF7; color:var(--muted); font-size:.68rem; }
+.review-settings-list { margin-top:.75rem; display:grid; }
+.review-setting-row { display:grid; grid-template-columns:1fr 5.8rem; align-items:center; gap:.7rem; padding:.55rem 0; border-bottom:1px dashed var(--line); }
+.review-setting-row label { font-size:.76rem; font-weight:750; }
+.review-day-input { display:flex; align-items:center; gap:.3rem; color:var(--muted); font-size:.7rem; }
+.review-day-input input { width:4.2rem; min-height:2.45rem; padding:.35rem .45rem; text-align:right; }
 
 /* footer dog */
 footer { margin-top:auto; padding-top:1.2rem; display:flex; flex-direction:column; align-items:center; gap:.25rem; color:#A2B0A5; font-size:.62rem; text-align:center; }
@@ -273,7 +278,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
     </svg></div>
     <span>大切な記録は、あなたの端末の中だけに。</span>
     <span class="credit"><img src="author.png" alt="" width="20" height="20">作者: <a href="https://instagram.com/mumupoikatsu" target="_blank" rel="noopener noreferrer">mumupoikatsu</a></span>
-    <span>© mumupoikatsu · 管理ブック v1.0</span>
+    <span>© mumupoikatsu · 管理ブック v1.1</span>
     <button type="button" class="reload-link" id="reload-latest">最新版を読み込む</button>
   </footer>
 </main>
@@ -291,10 +296,12 @@ body.unlocked .dog .tail { animation-duration:.55s; }
         <label class="field"><span>状態</span><select id="status" class="control"><option value="active">利用中</option><option value="planned">MNP予定</option><option value="cancelled">終了</option></select></label>
       </div>
       <div class="grid-2">
-        <label class="field"><span>キャリア</span><select id="carrier" class="control"><option value="">選択</option><option>docomo</option><option>au</option><option>SoftBank</option><option>楽天モバイル</option><option>ahamo</option><option>povo</option><option>LINEMO</option><option>UQ mobile</option><option>Y!mobile</option><option>その他 / MVNO</option></select></label>
+        <label class="field"><span>キャリア</span><select id="carrier" class="control"><option value="">選択</option></select></label>
         <label class="field"><span>契約名義</span><input id="holder" class="control" autocomplete="name" maxlength="80" placeholder="名義を記録"></label>
       </div>
-      <label class="field"><span>プラン・契約の名前</span><input id="plan" class="control" maxlength="100" placeholder="プラン名や契約番号など"></label>
+      <label id="carrier-custom-field" class="field" hidden><span>キャリア名</span><input id="carrier-custom" class="control" maxlength="80" placeholder="キャリア名を入力"></label>
+      <label class="field"><span>プラン名</span><select id="plan" class="control"><option value="">選択</option></select></label>
+      <label id="plan-custom-field" class="field" hidden><span>プラン名を入力</span><input id="plan-custom" class="control" maxlength="100" placeholder="現在のプラン名"></label>
     </section>
     <section class="form-section">
       <div class="form-title">利用セット</div>
@@ -330,7 +337,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
         <label class="field"><span>契約したお店</span><input id="store" class="control" maxlength="100" placeholder="店舗名・オンライン"></label>
       </div>
       <label class="field"><span>次にすること</span><input id="next-action" class="control" maxlength="100" placeholder="例：オプションを見直す"></label>
-      <label class="field"><span>見直し日</span><input id="next-date" class="control" type="date"></label>
+      <div class="form-title-row"><label class="field" style="flex:1"><span>見直し日</span><input id="next-date" class="control" type="date"></label><button id="review-reset" class="subtle-btn" type="button" style="align-self:flex-end;margin-bottom:.3rem">目安を入力</button></div>
       <p id="review-day-count" class="hint">契約日と見直し日を入れると、経過日数を表示します。</p>
       <label id="kaisen-link-field" class="field" hidden><span>回線チェックのSIM</span><select id="kaisen-profile" class="control"><option value="">紐づけない</option></select></label>
       <p id="kaisen-link-hint" class="hint" hidden>同じ場所に公開した「回線チェック」のSIMと紐づけると、チェック済みの印を表示できます。</p>
@@ -371,11 +378,20 @@ body.unlocked .dog .tail { animation-duration:.55s; }
   <div class="dialog-head"><h2>設定</h2><button class="close-btn" type="button" data-close="settings-dialog" aria-label="閉じる">×</button></div>
   <div class="dialog-body">
     <div class="setting-row"><div><strong>自動で鍵をかける</strong><p>操作がないときにメモリから鍵を消します</p></div><select id="auto-lock"><option value="5">5分</option><option value="15">15分</option><option value="30">30分</option><option value="0">しない</option></select></div>
+    <div class="setting-row"><div><strong>見直し日の目安</strong><p>キャリアごとの日数</p></div><button id="review-settings-open" class="subtle-btn" type="button">設定</button></div>
     <div class="setting-row"><div><strong>絵文字キー</strong><p>ロック画面で選ぶ3つの絵文字</p></div><button id="pass-change-open" class="subtle-btn" type="button">変更</button></div>
     <div class="storage-fact"><strong>保存について</strong><br>データはこのブラウザのIndexedDBにAES-GCM暗号化して保存しています。外部通信、クラウド同期、バックアップ機能はありません。ブラウザのデータを消すと記録も消えます。</div>
   </div>
   <div class="dialog-actions"><button id="lock-now" class="primary" type="button">ロックする</button></div>
 </div>
+</dialog>
+
+<dialog id="review-settings-dialog">
+<form id="review-settings-form" class="dialog-shell" method="dialog">
+  <div class="dialog-head"><h2>見直し日の目安</h2><button class="close-btn" type="button" data-close="review-settings-dialog" aria-label="閉じる">×</button></div>
+  <div class="dialog-body"><p class="hint">契約日から何日後にするか、キャリアごとに設定します。</p><div id="review-settings-list" class="review-settings-list"></div><p id="review-settings-error" class="inline-error" role="alert"></p></div>
+  <div class="dialog-actions"><button class="primary" type="submit">保存</button></div>
+</form>
 </dialog>
 
 <dialog id="pass-dialog">
