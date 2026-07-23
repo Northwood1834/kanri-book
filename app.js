@@ -23,7 +23,9 @@ const CARRIERS = {
   "BIGLOBEモバイル": ["プランS","プランR","プランM"],
   "HISモバイル": ["自由自在2.0プラン"],
   "イオンモバイル": ["音声プラン","シェアプラン","やさしいプラン"],
-  "J:COM MOBILE": ["J:COM MOBILE Aプラン ST","J:COM MOBILE Aプラン SU"]
+  "J:COM MOBILE": ["J:COM MOBILE Aプラン ST","J:COM MOBILE Aプラン SU"],
+  "JALモバイル": ["シンプルワンプラン","自分に合ったぴったりプラン"],
+  "ANAモバイル": ["基本プラン"]
 };
 const DEFAULT_REVIEW_DAYS = Object.fromEntries([...Object.keys(CARRIERS),"other"].map(name=>[name,180]));
 let db, key = null, book = null, unlockCode = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve(), formReviewAuto = true;
