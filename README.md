@@ -15,6 +15,8 @@
 
 ## Deploy
 
+公開URL: https://northwood1834.github.io/kanri-book/
+
 「回線チェック」と同じく、リポジトリのルートをそのままGitHub Pagesで
 公開できます。ビルド工程やサーバーは不要です。GitHubの
 **Settings → Pages** で公開ブランチ（`main`または同内容の`gh-pages`）と

@@ -7,6 +7,8 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="theme-color" content="#F1F7F2">
+<link rel="canonical" href="https://northwood1834.github.io/kanri-book/">
+<meta property="og:url" content="https://northwood1834.github.io/kanri-book/">
 <meta name="description" content="携帯番号と契約情報を、端末の中だけに暗号化して記録する管理ノートです。">
 <title>管理ブック</title>
 <link rel="manifest" href="manifest.json">
@@ -93,6 +95,17 @@ textarea.control { min-height:5.5rem; resize:vertical; }
 .summary-item strong { display:block; margin-top:.08rem; font-size:1.42rem; line-height:1.25; font-variant-numeric:tabular-nums; }
 .summary-item strong small { font-size:.68rem; margin-left:.2rem; color:var(--muted); }
 .summary-item.attention strong { color:var(--warn); }
+.draft-card,.calendar-card { padding:1rem 1.05rem; }
+.draft-card { border-color:#E8D9BF; background:#FFFCF6; }
+.notice-row { display:flex; align-items:center; justify-content:space-between; gap:.8rem; }
+.notice-main { min-width:0; }
+.notice-title { font-size:.82rem; font-weight:850; }
+.notice-text { margin-top:.08rem; color:var(--muted); font-size:.67rem; }
+.notice-actions { display:flex; gap:.4rem; flex:0 0 auto; }
+.calendar-card { background:linear-gradient(145deg,#FFFFFF,#F4FBF6); }
+.calendar-card .calendar-count { color:var(--accent-deep); font-size:1.15rem; font-weight:850; }
+.calendar-card .primary { margin-top:.7rem; min-height:2.75rem; }
+.calendar-note { margin-top:.4rem; text-align:center; color:var(--muted); font-size:.62rem; }
 .search-wrap { position:relative; }
 .search-wrap svg { position:absolute; width:1rem; left:.85rem; top:50%; transform:translateY(-50%); color:var(--muted); pointer-events:none; }
 .search-wrap input { padding-left:2.35rem; background:rgba(255,255,255,.72); }
@@ -143,7 +156,7 @@ dialog::backdrop { background:rgba(38,57,44,.34); backdrop-filter:blur(3px); }
 .dialog-head { flex:0 0 auto; display:flex; justify-content:space-between; align-items:center; padding:1rem 1.1rem .85rem; border-bottom:1px solid var(--line); }
 .dialog-head h2 { font-size:1.02rem; }
 .close-btn { width:2.25rem; height:2.25rem; border:0; border-radius:50%; background:var(--accent-soft); color:var(--accent-deep); display:grid; place-items:center; font-size:1.2rem; }
-.dialog-body { overflow:auto; overscroll-behavior:contain; padding:.2rem 1.1rem 1.2rem; }
+.dialog-body { flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; padding:.2rem 1.1rem 1.2rem; }
 .form-section { margin-top:1.1rem; padding-top:.9rem; border-top:1px dashed var(--line); }
 .form-section:first-child { border-top:0; padding-top:.25rem; }
 .form-title-row { display:flex; justify-content:space-between; align-items:center; }
@@ -156,11 +169,18 @@ dialog::backdrop { background:rgba(38,57,44,.34); backdrop-filter:blur(3px); }
 .repeat-row .field { margin-top:.5rem; }
 .repeat-row .field:first-child { margin-top:0; }
 .remove-row { position:absolute; top:.35rem; right:.35rem; width:1.9rem; height:1.9rem; border:0; border-radius:50%; background:white; color:var(--danger); z-index:1; }
+.return-setup { width:100%; margin-top:.75rem; min-height:2.75rem; border:1.5px solid #B9DCC2; border-radius:.85rem; background:var(--accent-soft); color:var(--accent-deep); font-size:.75rem; font-weight:850; }
+.return-panel { margin-top:.7rem; padding:.75rem; border:1px solid var(--line); border-radius:.9rem; background:#FAFDFA; }
+.return-panel .subtle-btn { margin-top:.65rem; }
+.calendar-action { width:100%; margin-top:.7rem; min-height:2.75rem; border:0; border-radius:999px; background:var(--accent); color:white; font-size:.74rem; font-weight:850; }
+.calendar-action:disabled { opacity:.45; }
+.detail-calendar { margin-top:.75rem; }
+.draft-updated { font-variant-numeric:tabular-nums; }
 .check-row { display:flex; align-items:center; gap:.5rem; margin-top:.65rem; color:var(--muted); font-size:.72rem; }
 .check-row input { width:1.05rem; height:1.05rem; accent-color:var(--accent); }
 .dialog-actions { flex:0 0 auto; display:flex; gap:.55rem; padding:.75rem 1.1rem calc(.75rem + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:white; }
 .dialog-actions .primary { margin:0; min-height:2.85rem; }
-.danger-btn { border:1.5px solid #EBCFD1; background:var(--danger-bg); color:var(--danger); border-radius:999px; padding:.65rem .9rem; font-size:.72rem; font-weight:800; }
+.danger-btn { flex:0 0 auto; white-space:nowrap; border:1.5px solid #EBCFD1; background:var(--danger-bg); color:var(--danger); border-radius:999px; padding:.65rem .9rem; font-size:.72rem; font-weight:800; }
 .detail-secret { display:flex; gap:.4rem; align-items:center; }
 .detail-secret code { flex:1; min-width:0; padding:.45rem .55rem; border-radius:.55rem; background:#F5F8F5; font-family:ui-monospace,SFMono-Regular,monospace; overflow:hidden; text-overflow:ellipsis; }
 .detail-secret button { border:0; background:var(--accent-soft); color:var(--accent-deep); border-radius:999px; padding:.4rem .55rem; font-size:.65rem; font-weight:800; }
@@ -188,6 +208,7 @@ dialog::backdrop { background:rgba(38,57,44,.34); backdrop-filter:blur(3px); }
 /* footer dog */
 footer { margin-top:auto; padding-top:1.2rem; display:flex; flex-direction:column; align-items:center; gap:.25rem; color:#A2B0A5; font-size:.62rem; text-align:center; }
 .credit { display:flex; align-items:center; gap:.3rem; }
+.companion-link { margin:.15rem 0; font-weight:750; }
 .credit img { width:20px; height:20px; border-radius:50%; object-fit:cover; }
 footer a, .reload-link { color:#78967F; text-decoration:underline; text-underline-offset:2px; }
 .reload-link { border:0; background:none; padding:.15rem .3rem; font-size:inherit; }
@@ -250,6 +271,14 @@ body.unlocked .dog .tail { animation-duration:.55s; }
       <div class="summary-item"><span>利用中の回線</span><strong id="active-count">0<small>回線</small></strong></div>
       <div class="summary-item attention"><span>30日以内の予定</span><strong id="soon-count">0<small>件</small></strong></div>
     </div>
+    <section id="draft-card" class="card draft-card" hidden>
+      <div class="notice-row"><div class="notice-main"><div class="notice-title">入力途中の回線があります</div><div id="draft-updated" class="notice-text draft-updated"></div></div><div class="notice-actions"><button id="draft-resume" class="subtle-btn" type="button">続きから</button><button id="draft-discard" class="subtle-btn" type="button">削除</button></div></div>
+    </section>
+    <section id="calendar-card" class="card calendar-card" hidden>
+      <div class="notice-row"><div class="notice-main"><div class="notice-title">カレンダーに入れる予定</div><div id="calendar-breakdown" class="notice-text"></div></div><div id="calendar-count" class="calendar-count">0件</div></div>
+      <button id="calendar-all" class="primary" type="button">まとめてカレンダーに追加</button>
+      <p id="calendar-last" class="calendar-note">通知はカレンダー側で行われます</p>
+    </section>
     <div class="view-switch" aria-label="一覧のまとめ方">
       <button class="active" type="button" data-view="line">回線ごと</button>
       <button type="button" data-view="device">端末ごと</button>
@@ -277,8 +306,9 @@ body.unlocked .dog .tail { animation-duration:.55s; }
       <path d="M27 43v5M51 43v5" stroke="#7CAD88" stroke-width="5" stroke-linecap="round"/>
     </svg></div>
     <span>大切な記録は、あなたの端末の中だけに。</span>
+    <a class="companion-link" href="https://northwood1834.github.io/kaisen-check/" target="_blank" rel="noopener noreferrer">回線チェックを開く ↗</a>
     <span class="credit"><img src="author.png" alt="" width="20" height="20">作者: <a href="https://instagram.com/mumupoikatsu" target="_blank" rel="noopener noreferrer">mumupoikatsu</a></span>
-    <span>© mumupoikatsu · 管理ブック v1.1.3</span>
+    <span>© mumupoikatsu · 管理ブック v1.2</span>
     <button type="button" class="reload-link" id="reload-latest">最新版を読み込む</button>
   </footer>
 </main>
@@ -310,7 +340,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
       <div id="set-editor" hidden>
         <div class="grid-2">
           <label class="field"><span>セットの名前 *</span><input id="set-name" class="control" maxlength="50" placeholder="メイン・Aセットなど"></label>
-          <label class="field"><span>メールアドレス</span><input id="set-email" class="control" type="email" autocomplete="off" maxlength="160" placeholder="a@example.com"></label>
+          <label class="field"><span>メールアドレス</span><input id="set-email" class="control" type="email" autocomplete="email" maxlength="160" placeholder="a@example.com"></label>
         </div>
         <p class="hint">既存セットを編集すると、そのセットを使うほかの回線にも反映されます。</p>
       </div>
@@ -327,6 +357,17 @@ body.unlocked .dog .tail { animation-duration:.55s; }
         <div class="grid-2">
           <label class="field"><span>IMEI</span><input id="device-imei" class="control" inputmode="numeric" maxlength="20" autocomplete="off" placeholder="15桁"></label>
           <label class="field"><span>EID</span><input id="device-eid" class="control" inputmode="numeric" maxlength="40" autocomplete="off" placeholder="eSIMの場合"></label>
+        </div>
+        <button id="device-return-setup" class="return-setup" type="button">2年返却の目安を設定</button>
+        <div id="device-return-panel" class="return-panel" hidden>
+          <label class="field"><span>端末を購入したキャリア</span><select id="device-purchase-carrier" class="control"><option value="docomo">docomo</option><option value="au">au</option><option value="SoftBank">SoftBank</option><option value="楽天モバイル">楽天モバイル</option><option value="other">その他</option></select></label>
+          <label class="field"><span>返却プログラム</span><input id="device-return-program" class="control" autocomplete="off" maxlength="100" placeholder="プログラム名"></label>
+          <div class="grid-2">
+            <label class="field"><span>利用開始月</span><input id="device-start-month" class="control" type="month"></label>
+            <label class="field"><span>2年利用時のおトク返却月</span><input id="device-return-month" class="control" type="month"></label>
+          </div>
+          <p id="device-return-note" class="hint">ほかの時期は契約内容を確認</p>
+          <button id="device-return-clear" class="subtle-btn" type="button">設定を外す</button>
         </div>
       </div>
     </section>
