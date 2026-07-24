@@ -83,6 +83,29 @@ textarea.control { min-height:5.5rem; resize:vertical; }
 .emoji-choice { min-height:3.5rem; border:1.5px solid var(--line); border-radius:1rem; background:#FCFEFC; font-size:1.65rem; box-shadow:0 2px 8px rgba(67,136,90,.05); }
 .emoji-choice:active { transform:scale(.93); background:var(--accent-soft); border-color:#B3D8BC; }
 @keyframes pop { 40%{transform:scale(1.12)} 100%{transform:scale(1)} }
+.lock-wizard { margin-top:.25rem; }
+.lock-selector + .lock-selector { margin-top:.85rem; }
+.lock-selector-label { display:block; margin-bottom:.38rem; color:var(--muted); font-size:.7rem; font-weight:800; }
+.lock-options { display:grid; grid-template-columns:repeat(4,1fr); gap:.35rem; }
+.lock-options.modes { grid-template-columns:repeat(3,1fr); }
+.lock-option { min-height:2.65rem; padding:.35rem .2rem; border:1.5px solid var(--line); border-radius:.75rem; background:#FCFEFC; color:var(--muted); font-size:.68rem; font-weight:800; }
+.lock-option.active { border-color:#9CCCA7; background:var(--accent-soft); color:var(--accent-deep); box-shadow:0 0 0 2px rgba(101,168,120,.08); }
+.lock-option small { display:block; font-size:.53rem; font-weight:750; }
+.lock-description { min-height:2.2rem; margin-top:.65rem; color:var(--muted); font-size:.67rem; line-height:1.55; text-align:center; }
+.lock-key-grid { display:grid; gap:.42rem; }
+.lock-key-grid.emoji { grid-template-columns:repeat(4,1fr); }
+.lock-key-grid.number { grid-template-columns:repeat(3,1fr); }
+.lock-key-grid.mixed { grid-template-columns:repeat(5,1fr); }
+.lock-key { min-height:3.05rem; border:1.5px solid var(--line); border-radius:.8rem; background:#FCFEFC; color:var(--ink); font-size:1.35rem; font-weight:800; box-shadow:0 2px 7px rgba(67,136,90,.04); }
+.lock-key.number { font-size:1.05rem; }
+.lock-key:active { transform:scale(.94); background:var(--accent-soft); border-color:#B3D8BC; }
+.lock-entry-actions { display:flex; justify-content:center; gap:.45rem; margin-top:.55rem; }
+.lock-back { border:0; background:transparent; color:var(--muted); padding:.35rem .55rem; font-size:.66rem; font-weight:750; text-decoration:underline; text-underline-offset:2px; }
+.lock-reset { margin-top:.8rem; padding:.75rem; border:1px solid #E8D9BF; border-radius:.85rem; background:#FFFCF6; text-align:center; }
+.lock-reset p { color:var(--muted); font-size:.67rem; line-height:1.55; }
+.lock-reset .subtle-btn { margin-top:.5rem; }
+.lock-reset-confirm { margin-top:.55rem; padding-top:.55rem; border-top:1px dashed #E8D9BF; }
+.lock-reset-confirm .notice-actions { justify-content:center; margin-top:.45rem; }
 
 /* toolbar + summary */
 .toolbar { display:flex; justify-content:space-between; align-items:center; gap:.7rem; }
@@ -245,20 +268,25 @@ body.unlocked .dog .tail { animation-duration:.55s; }
   <section id="setup-view" class="card gate" hidden>
     <div class="gate-hero">
       <div class="gate-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M12 14v3"/></svg></div>
-      <div><h2>絵文字キーを決める</h2><p class="lead">好きな絵文字を、順番に3つ選びます。</p></div>
+      <div><h2 id="setup-heading">画面ロックを選ぶ</h2><p id="setup-lead" class="lead">あとから設定で変更できます。</p></div>
     </div>
-    <div id="setup-picker" class="emoji-picker" aria-live="polite"></div>
+    <div id="setup-picker" class="lock-wizard" aria-live="polite"></div>
     <p id="setup-error" class="inline-error" role="alert"></p>
-    <div class="security-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg><span>データの暗号鍵は、この端末で自動生成します。絵文字キーはロック画面で使います。</span></div>
+    <div class="security-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg><span>どの設定でも、記録はこの端末の中に暗号化して保存されます。画面ロックは簡易的なのぞき見対策です。</span></div>
   </section>
 
   <section id="unlock-view" class="card gate" hidden>
     <div class="gate-hero">
       <div class="gate-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 10V7a5 5 0 0 1 10 0v3"/><rect x="4" y="10" width="16" height="11" rx="3"/><path d="M12 14v3"/></svg></div>
-      <div><h2>管理ブックをひらく</h2><p class="lead">決めた順番で、絵文字を選びます。</p></div>
+      <div><h2>管理ブックをひらく</h2><p id="unlock-lead" class="lead">決めた順番でロックキーを選びます。</p></div>
     </div>
     <div id="unlock-picker" class="emoji-picker" aria-live="polite"></div>
     <p id="unlock-error" class="inline-error" role="alert"></p>
+    <div id="legacy-reset" class="lock-reset" hidden>
+      <p>旧方式で設定した方は、今回だけ画面ロックを設定し直せます。記録は消えません。</p>
+      <button id="legacy-reset-open" class="subtle-btn" type="button">設定し直す</button>
+      <div id="legacy-reset-confirm" class="lock-reset-confirm" hidden><p>この端末を操作できる人なら実行できます。</p><div class="notice-actions"><button id="legacy-reset-cancel" class="subtle-btn" type="button">やめる</button><button id="legacy-reset-run" class="subtle-btn" type="button">設定し直す</button></div></div>
+    </div>
     <div class="security-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-3.5 8-10V5l-8-3-8 3v7c0 6.5 8 10 8 10Z"/></svg><span>電話番号や暗証番号は、暗号化してこの端末に保存しています。</span></div>
   </section>
 
@@ -311,7 +339,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
     <span>大切な記録は、あなたの端末の中だけに。</span>
     <a class="companion-link" href="https://northwood1834.github.io/kaisen-check/" target="_blank" rel="noopener noreferrer">回線チェックを開く ↗</a>
     <span class="credit"><img src="author.png" alt="" width="20" height="20">作者: <a href="https://instagram.com/mumupoikatsu" target="_blank" rel="noopener noreferrer">mumupoikatsu</a></span>
-    <span>© mumupoikatsu · 管理ブック v1.2</span>
+    <span>© mumupoikatsu · 管理ブック v1.3</span>
     <button type="button" class="reload-link" id="reload-latest">最新版を読み込む</button>
   </footer>
 </main>
@@ -423,7 +451,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
   <div class="dialog-body">
     <div class="setting-row"><div><strong>自動で鍵をかける</strong><p>操作がないときにメモリから鍵を消します</p></div><select id="auto-lock"><option value="5">5分</option><option value="15">15分</option><option value="30">30分</option><option value="0">しない</option></select></div>
     <div class="setting-row"><div><strong>見直し日の目安</strong><p>キャリアごとの日数</p></div><button id="review-settings-open" class="subtle-btn" type="button">設定</button></div>
-    <div class="setting-row"><div><strong>絵文字キー</strong><p>ロック画面で選ぶ3つの絵文字</p></div><button id="pass-change-open" class="subtle-btn" type="button">変更</button></div>
+    <div class="setting-row"><div><strong>画面ロック</strong><p id="lock-summary">絵文字2個</p></div><button id="pass-change-open" class="subtle-btn" type="button">変更</button></div>
     <div class="storage-fact"><strong>保存について</strong><br>データはこのブラウザのIndexedDBにAES-GCM暗号化して保存しています。外部通信、クラウド同期、バックアップ機能はありません。ブラウザのデータを消すと記録も消えます。</div>
   </div>
   <div class="dialog-actions"><button id="lock-now" class="primary" type="button">ロックする</button></div>
@@ -440,8 +468,8 @@ body.unlocked .dog .tail { animation-duration:.55s; }
 
 <dialog id="pass-dialog">
 <div class="dialog-shell">
-  <div class="dialog-head"><h2>絵文字キーを変更</h2><button class="close-btn" type="button" data-close="pass-dialog" aria-label="閉じる">×</button></div>
-  <div class="dialog-body"><p class="hint">新しい絵文字を、順番に3つ選びます。</p><div id="change-picker" class="emoji-picker" aria-live="polite"></div><p id="pass-error" class="inline-error" role="alert"></p></div>
+  <div class="dialog-head"><h2>画面ロックを変更</h2><button class="close-btn" type="button" data-close="pass-dialog" aria-label="閉じる">×</button></div>
+  <div class="dialog-body"><div id="change-picker" class="lock-wizard" aria-live="polite"></div><p id="pass-error" class="inline-error" role="alert"></p></div>
 </div>
 </dialog>
 <div id="toast" class="toast" role="status"></div>

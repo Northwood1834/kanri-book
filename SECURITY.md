@@ -10,20 +10,28 @@
   `payload` ciphertext domains.
 - The encrypted payload contains phone numbers, PINs, account credentials,
   emails, IMEI/EID values, notes, entity links, settings, and schema metadata.
-- The three-emoji sequence is itself encrypted in a separate `gate` ciphertext.
+- The screen-lock configuration and selected tokens are encrypted in a separate
+  `gate` ciphertext.
 
 The non-extractable key and encrypted records are written together in one
 IndexedDB transaction when the vault is created. Later payload updates are
 single-record transactions.
 
-## Emoji lock
+## Screen lock
 
-The three-emoji sequence is a deliberate local lock-screen gesture. It is not a
-high-entropy password and is not represented as one. Each step shows six choices
-and always includes the correct choice. The order matters.
+The screen lock is a deliberate local privacy gesture, not a high-entropy
+password. A user may choose one to three fixed-position emoji or numeric tokens,
+mix both types, or use a one-tap cover without a lock token. The order matters.
+Stable positions reduce memory errors but are not represented as cryptographic
+strength.
 
 The cryptographic key is a separate random device key. This avoids weakening
-AES encryption to the small number of possible three-emoji sequences.
+AES encryption to the small number of possible screen-lock combinations.
+
+Vaults created by the former three-emoji flow receive a one-time migration path.
+Before migration, a person who can operate that browser may replace the legacy
+screen lock without deleting the encrypted notebook. Saving any version-2 lock
+configuration permanently removes that reset route for the vault.
 
 ## Data lifecycle
 
@@ -39,11 +47,11 @@ AES encryption to the small number of possible three-emoji sequences.
 ## Threat boundary
 
 This design protects the database payload at rest and detects ciphertext
-modification through AES-GCM authentication. It does not claim that three emoji
-provide cryptographic strength. It also cannot protect data after hostile code
+modification through AES-GCM authentication. It does not claim that the screen
+lock provides cryptographic strength. It also cannot protect data after hostile code
 runs under the same browser origin, while the device/browser profile is already
 compromised, or while secrets are visible on an unlocked screen.
 
 A stronger user-authentication boundary would require a platform credential such
-as WebAuthn/passkeys. It must not be simulated by claiming that the emoji sequence
+as WebAuthn/passkeys. It must not be simulated by claiming that the screen lock
 is a password.

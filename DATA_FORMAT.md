@@ -18,12 +18,18 @@ The `vault` record exposes only:
 - `format`: envelope format version (`2`)
 - `cipher`: `AES-256-GCM`
 - `key`: `non-extractable-device-key`
-- `gate`: random IV and ciphertext for the emoji sequence
+- `gate`: random IV and ciphertext for the screen-lock configuration
 - `payload`: independently random IV and ciphertext for the notebook
 - `updatedAt`: write timestamp
 
 Both ciphertexts use 96-bit random IVs, 128-bit authentication tags, and
 versioned Additional Authenticated Data. See [`SECURITY.md`](SECURITY.md).
+
+A current decrypted `gate` has `version: 2`, a `mode` (`emoji`, `number`,
+`mixed`, or `none`), a length from zero to three, and the selected token array.
+Legacy gates contain only a three-item `sequence`; they are replaced with the
+version-2 structure during the one-time screen-lock migration. This changes
+neither the envelope format nor the payload schema.
 
 The decrypted document has `schema: "kanri-book"` and `schemaVersion: 1`.
 Its top-level collections are `lines`, `sets`, and `devices`. Stable random IDs

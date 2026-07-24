@@ -4,7 +4,9 @@ const $ = (id) => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const DB_NAME = "kanri-book-vault", STORE = "secure", RECORD = "vault", KEY_RECORD = "device-key";
 const AAD_PREFIX = "kanri-book|format-2|";
-const EMOJIS = ["🐶","🐱","🐰","🦊","🐻","🐼","🐸","🐧","🦉","🦔","🐢","🐙","🐳","🦋","🌵","🍀","🌻","🍎","🍋","🍇","🍙","🍩","☕","🎈","🎧","🚲","🚗","✈️","🌙","⭐","☁️","🔥","💧","🎲","🧸","📚"];
+const LEGACY_EMOJIS = ["🐶","🐱","🐰","🦊","🐻","🐼","🐸","🐧","🦉","🦔","🐢","🐙","🐳","🦋","🌵","🍀","🌻","🍎","🍋","🍇","🍙","🍩","☕","🎈","🎧","🚲","🚗","✈️","🌙","⭐","☁️","🔥","💧","🎲","🧸","📚"];
+const LOCK_EMOJIS = ["🐶","🐱","🐰","🐻","🐼","🍎","🍋","🍀","⭐","🌙","🚗","☕"];
+const LOCK_DIGITS = ["1","2","3","4","5","6","7","8","9","0"];
 const CARRIERS = {
   "docomo": ["ドコモ MAX","ドコモ ポイ活 MAX","ドコモ ポイ活 20","ドコモ mini"],
   "ahamo": ["ahamo"],
@@ -35,7 +37,7 @@ const RETURN_PROGRAMS = {
   "楽天モバイル":{months:24,name:"楽天モバイル買い替え超トクプログラム"},
   other:{months:24,name:"返却プログラム"}
 };
-let db, key = null, book = null, unlockCode = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve(), formReviewAuto = true, draftTimer = null, suppressDraft = false, formDirty = false, skipDraftClose = false;
+let db, key = null, book = null, gateConfig = null, unlockContext = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve(), formReviewAuto = true, draftTimer = null, suppressDraft = false, formDirty = false, skipDraftClose = false;
 const emptyBook = () => ({ schema:"kanri-book", schemaVersion:1, version:1, lines:[], sets:[], devices:[], draft:null, settings:{ autoLock:15,reviewDays:{...DEFAULT_REVIEW_DAYS} }, createdAt:Date.now(), updatedAt:Date.now() });
 
 const openDB = () => new Promise((resolve,reject) => {
@@ -53,31 +55,91 @@ const unb64 = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const shuffle = values => { const a=[...values]; for(let i=a.length-1;i>0;i--){const r=new Uint32Array(1);crypto.getRandomValues(r);const j=r[0]%(i+1);[a[i],a[j]]=[a[j],a[i]]}return a; };
 const encryptPart = async (data,cryptoKey,purpose) => { const iv=bytes(12),aad=enc.encode(AAD_PREFIX+purpose),plain=enc.encode(JSON.stringify(data));const ciphertext=await crypto.subtle.encrypt({name:"AES-GCM",iv,additionalData:aad,tagLength:128},cryptoKey,plain);return {iv:b64(iv),ciphertext:b64(ciphertext)}; };
 const decryptPart = async (part,cryptoKey,purpose) => JSON.parse(dec.decode(await crypto.subtle.decrypt({name:"AES-GCM",iv:unb64(part.iv),additionalData:enc.encode(AAD_PREFIX+purpose),tagLength:128},cryptoKey,unb64(part.ciphertext))));
-const newRecord = async (data,cryptoKey,code) => ({format:2,cipher:"AES-256-GCM",key:"non-extractable-device-key",gate:await encryptPart({sequence:code},cryptoKey,"gate"),payload:await encryptPart(data,cryptoKey,"payload"),updatedAt:Date.now()});
+const newRecord = async (data,cryptoKey,config) => ({format:2,cipher:"AES-256-GCM",key:"non-extractable-device-key",gate:await encryptPart(config,cryptoKey,"gate"),payload:await encryptPart(data,cryptoKey,"payload"),updatedAt:Date.now()});
 
-function runPicker(containerId,expected,onDone){
-  const root=$(containerId),chosen=[];
-  const paint=()=>{root.replaceChildren();const progress=document.createElement("div");progress.className="emoji-progress";for(let i=0;i<3;i++){const slot=document.createElement("span");slot.className=`emoji-slot ${chosen[i]?"filled":""}`;slot.textContent=chosen[i]||"";progress.append(slot)}const prompt=document.createElement("div");prompt.className="emoji-prompt";prompt.textContent=`${["1つ目","2つ目","3つ目"][chosen.length]}の絵文字を選ぶ`;const correct=expected?.[chosen.length],pool=EMOJIS.filter(x=>x!==correct),choices=correct?shuffle([correct,...shuffle(pool).slice(0,5)]):shuffle(EMOJIS).slice(0,6),grid=document.createElement("div");grid.className="emoji-grid";choices.forEach(emoji=>{const b=document.createElement("button");b.type="button";b.className="emoji-choice";b.textContent=emoji;b.setAttribute("aria-label",emoji);b.onclick=()=>{if(containerId==="unlock-picker"&&chosen.length===0)$("unlock-error").textContent="";chosen.push(emoji);if(chosen.length===3){root.querySelectorAll("button").forEach(x=>x.disabled=true);onDone([...chosen]);}else paint()};grid.append(b)});root.append(progress,prompt,grid)};
+const lockChoices = mode => mode==="number"?LOCK_DIGITS:mode==="mixed"?[...LOCK_DIGITS,...LOCK_EMOJIS.slice(0,10)]:LOCK_EMOJIS;
+const lockModeLabel = mode => ({emoji:"絵文字",number:"数字",mixed:"絵文字と数字",none:"ロックキーなし"}[mode]||"画面ロック");
+const lockSummary = config => config?.mode==="none"?"ロックキーなし（ワンタップ）":`${lockModeLabel(config?.mode)}${config?.length||0}個`;
+const sameTokens = (a,b) => a.length===b.length&&a.every((value,index)=>value===b[index]);
+function makeLockConfig(mode,tokens=[]){return{version:2,mode:mode==="none"?"none":mode,length:mode==="none"?0:tokens.length,tokens:mode==="none"?[]:[...tokens],updatedAt:Date.now()};}
+function normalizeLockConfig(value){
+  if(value?.version!==2)return null;
+  const mode=value.mode,length=Number(value.length),tokens=Array.isArray(value.tokens)?value.tokens:[];
+  if(mode==="none"&&length===0&&tokens.length===0)return makeLockConfig("none");
+  if(!["emoji","number","mixed"].includes(mode)||![1,2,3].includes(length)||tokens.length!==length)return null;
+  const allowed=lockChoices(mode);if(tokens.some(token=>!allowed.includes(token)))return null;
+  return{version:2,mode,length,tokens:[...tokens],updatedAt:value.updatedAt||Date.now()};
+}
+function renderLockEntry(root,config,{prompt="ロックキーを入力",mask=true,autoSubmit=false,actionLabel="この内容で決める",onSubmit,onBack,onFirst}={}){
+  const chosen=[];let submitted=false;
+  const submit=async()=>{if(submitted||chosen.length!==config.length)return;submitted=true;root.querySelectorAll("button").forEach(button=>button.disabled=true);try{await onSubmit([...chosen])}catch{submitted=false;paint()}};
+  const paint=()=>{
+    root.replaceChildren();
+    const progress=document.createElement("div");progress.className="emoji-progress";
+    for(let i=0;i<config.length;i++){const slot=document.createElement("span");slot.className=`emoji-slot ${chosen[i]?"filled":""}`;slot.textContent=chosen[i]?(mask?"●":chosen[i]):"";progress.append(slot)}
+    const label=document.createElement("div");label.className="emoji-prompt";label.textContent=chosen.length<config.length?`${chosen.length+1}個目を選ぶ`:"入力できました";
+    const grid=document.createElement("div");grid.className=`lock-key-grid ${config.mode}`;
+    lockChoices(config.mode).forEach(token=>{const button=document.createElement("button");button.type="button";button.className=`lock-key ${LOCK_DIGITS.includes(token)?"number":""}`;button.textContent=token;button.setAttribute("aria-label",LOCK_DIGITS.includes(token)?`数字 ${token}`:token);button.onclick=()=>{if(chosen.length===0)onFirst?.();if(chosen.length>=config.length)return;chosen.push(token);paint();if(autoSubmit&&chosen.length===config.length)setTimeout(submit,180)};grid.append(button)});
+    const actions=document.createElement("div");actions.className="lock-entry-actions";
+    if(chosen.length){const back=document.createElement("button");back.type="button";back.className="lock-back";back.textContent="1つ戻る";back.onclick=()=>{chosen.pop();submitted=false;paint()};actions.append(back)}
+    if(onBack){const options=document.createElement("button");options.type="button";options.className="lock-back";options.textContent="選び方を変える";options.onclick=onBack;actions.append(options)}
+    root.append(progress,label,grid,actions);
+    if(chosen.length===config.length&&!autoSubmit){const done=document.createElement("button");done.type="button";done.className="primary";done.textContent=actionLabel;done.onclick=submit;root.append(done)}
+    const help=document.createElement("p");help.className="lock-description";help.textContent=prompt;root.prepend(help);
+  };
   paint();
 }
+function renderLockWizard(rootId,onComplete,initial=gateConfig){
+  const root=$(rootId);let length=initial?.mode==="none"?0:(initial?.length||2),mode=initial?.mode&&initial.mode!=="none"?initial.mode:"emoji",first=[];
+  const finish=async(config,button)=>{button.disabled=true;try{await onComplete(config)}catch{button.disabled=false}};
+  const choose=()=>{
+    root.replaceChildren();
+    const lengths=document.createElement("div");lengths.className="lock-selector";lengths.innerHTML='<span class="lock-selector-label">個数</span>';
+    const lengthOptions=document.createElement("div");lengthOptions.className="lock-options";
+    [[0,"使わない",""],[1,"1個","手軽"],[2,"2個","おすすめ"],[3,"3個",""]].forEach(([value,label,small])=>{const button=document.createElement("button");button.type="button";button.className=`lock-option ${length===value?"active":""}`;button.innerHTML=`${label}${small?`<small>${small}</small>`:""}`;button.onclick=()=>{length=value;choose()};lengthOptions.append(button)});lengths.append(lengthOptions);root.append(lengths);
+    if(length>0){const modes=document.createElement("div");modes.className="lock-selector";modes.innerHTML='<span class="lock-selector-label">種類</span>';const options=document.createElement("div");options.className="lock-options modes";[["emoji","絵文字"],["number","数字"],["mixed","まぜる"]].forEach(([value,label])=>{const button=document.createElement("button");button.type="button";button.className=`lock-option ${mode===value?"active":""}`;button.textContent=label;button.onclick=()=>{mode=value;choose()};options.append(button)});modes.append(options);root.append(modes)}
+    const description=document.createElement("p");description.className="lock-description";description.textContent=length===0?"コードは使わず、ボタンを1回押して開きます。":length===1?"もっとも手軽です。共有端末では2個以上がおすすめです。":length===2?"覚えやすさとのぞき見対策のバランスがよい設定です。":"3個を順番に選びます。配置は毎回変わりません。";root.append(description);
+    const next=document.createElement("button");next.type="button";next.className="primary";next.textContent=length===0?"ワンタップで開く設定にする":"次へ";next.onclick=()=>length===0?finish(makeLockConfig("none"),next):enter();root.append(next);
+  };
+  const enter=()=>renderLockEntry(root,{mode,length},{mask:false,prompt:`${lockModeLabel(mode)}を${length}個、順番に選びます。`,actionLabel:"この内容で決める",onBack:choose,onSubmit:tokens=>{first=tokens;confirmEntry()}});
+  const confirmEntry=(mismatch=false)=>{renderLockEntry(root,{mode,length},{mask:false,prompt:"確認のため、同じ順番でもう一度選んでください。",actionLabel:"確認する",onBack:enter,onSubmit:async tokens=>{if(!sameTokens(first,tokens)){confirmEntry(true);return}await onComplete(makeLockConfig(mode,tokens))}});if(mismatch){const error=document.createElement("p");error.className="inline-error";error.textContent="順番が違います。もう一度お試しください。";root.append(error)}};
+  choose();
+}
+function runLegacyPicker(expected,onDone){
+  const root=$("unlock-picker"),chosen=[];
+  const paint=()=>{root.replaceChildren();const progress=document.createElement("div");progress.className="emoji-progress";for(let i=0;i<3;i++){const slot=document.createElement("span");slot.className=`emoji-slot ${chosen[i]?"filled":""}`;slot.textContent=chosen[i]||"";progress.append(slot)}const prompt=document.createElement("div");prompt.className="emoji-prompt";prompt.textContent=`${["1つ目","2つ目","3つ目"][chosen.length]}の絵文字を選ぶ`;const correct=expected[chosen.length],pool=LEGACY_EMOJIS.filter(value=>value!==correct),choices=shuffle([correct,...shuffle(pool).slice(0,5)]),grid=document.createElement("div");grid.className="emoji-grid";choices.forEach(emoji=>{const button=document.createElement("button");button.type="button";button.className="emoji-choice";button.textContent=emoji;button.setAttribute("aria-label",emoji);button.onclick=()=>{if(chosen.length===0)$("unlock-error").textContent="";chosen.push(emoji);if(chosen.length===3){root.querySelectorAll("button").forEach(item=>item.disabled=true);onDone([...chosen])}else paint()};grid.append(button)});root.append(progress,prompt,grid)};paint();
+}
+async function writeGateConfig(config,deviceKey){await saveQueue.catch(()=>{});const old=await dbGet(),gate=await encryptPart(config,deviceKey,"gate");await dbPut({...old,gate,updatedAt:Date.now()});}
+async function openVault(context){try{book=await decryptPart(context.record.payload,context.deviceKey,"payload");key=context.deviceKey;unlockContext=null;enterApp()}catch{key=null;book=null;$("unlock-error").textContent="データを開けませんでした。";show("unlock-view");prepareUnlock()}}
+function startLegacyMigration(context){
+  unlockContext=context;show("setup-view");$("setup-heading").textContent="画面ロックを新しくする";$("setup-lead").textContent="旧方式から、覚えやすい固定配置へ切り替えます。";$("setup-error").textContent="";
+  renderLockWizard("setup-picker",async config=>{try{await writeGateConfig(config,context.deviceKey);gateConfig=config;await openVault(context)}catch{$("setup-error").textContent="設定を保存できませんでした。もう一度お試しください。";throw new Error("gate-save")}},makeLockConfig("emoji",["🐶","🐱"]));
+}
+function renderModernUnlock(preserveError=false){
+  $("legacy-reset").hidden=true;if(!preserveError)$("unlock-error").textContent="";$("unlock-lead").textContent=gateConfig.mode==="none"?"ロックキーは設定されていません。":`${lockSummary(gateConfig)}を、決めた順番で選びます。`;
+  const root=$("unlock-picker");
+  if(gateConfig.mode==="none"){root.replaceChildren();const button=document.createElement("button");button.type="button";button.className="primary";button.textContent="管理ブックを開く";button.onclick=()=>{button.disabled=true;openVault(unlockContext)};root.append(button);return}
+  renderLockEntry(root,gateConfig,{mask:true,autoSubmit:true,prompt:"配置は毎回変わりません。",onFirst:()=>{$("unlock-error").textContent=""},onSubmit:tokens=>{if(!sameTokens(tokens,gateConfig.tokens)){$("unlock-error").textContent="ロックキーが違います。";setTimeout(()=>renderModernUnlock(true),450);return}return openVault(unlockContext)}});
+}
 async function prepareUnlock(){
-  try{const record=await dbGet(),deviceKey=await dbGet(KEY_RECORD);if(!record||!deviceKey||record.format!==2)throw new Error("unsupported");const gate=await decryptPart(record.gate,deviceKey,"gate");unlockCode=gate.sequence;runPicker("unlock-picker",unlockCode,unlockWithCode)}catch{showFatal("暗号化データを開けません。ブラウザの保存データが揃っているか確認してください。");}
+  try{const record=await dbGet(),deviceKey=await dbGet(KEY_RECORD);if(!record||!deviceKey||record.format!==2)throw new Error("unsupported");const gate=await decryptPart(record.gate,deviceKey,"gate");unlockContext={record,deviceKey,legacy:false};gateConfig=normalizeLockConfig(gate);$("legacy-reset-confirm").hidden=true;$("legacy-reset-open").hidden=false;
+    if(gateConfig){renderModernUnlock();return}
+    if(gate?.version===2||!Array.isArray(gate?.sequence)||gate.sequence.length!==3||gate.sequence.some(token=>!LEGACY_EMOJIS.includes(token)))throw new Error("invalid-gate");unlockContext.legacy=true;$("unlock-lead").textContent="以前に決めた3つの絵文字を選びます。";$("legacy-reset").hidden=false;$("unlock-error").textContent="";const handleLegacy=tokens=>{if(!sameTokens(tokens,gate.sequence)){$("unlock-error").textContent="絵文字の順番が違います。";setTimeout(()=>runLegacyPicker(gate.sequence,handleLegacy),450);return}startLegacyMigration(unlockContext)};runLegacyPicker(gate.sequence,handleLegacy);
+  }catch{showFatal("暗号化データを開けません。ブラウザの保存データが揃っているか確認してください。")}
 }
-async function createVault(code){
+async function createVault(config){
   $("setup-error").textContent="";
-  try{const deviceKey=await crypto.subtle.generateKey({name:"AES-GCM",length:256},false,["encrypt","decrypt"]);const data=emptyBook(),record=await newRecord(data,deviceKey,code);await dbPutBoth(record,deviceKey);key=deviceKey;book=data;unlockCode=code;navigator.storage?.persist?.().catch(()=>{});enterApp()}
-  catch{key=null;book=null;$("setup-error").textContent="保存できませんでした。もう一度お試しください。";runPicker("setup-picker",null,createVault)}
+  try{const deviceKey=await crypto.subtle.generateKey({name:"AES-GCM",length:256},false,["encrypt","decrypt"]),data=emptyBook(),record=await newRecord(data,deviceKey,config);await dbPutBoth(record,deviceKey);key=deviceKey;book=data;gateConfig=config;navigator.storage?.persist?.().catch(()=>{});enterApp()}
+  catch{key=null;book=null;$("setup-error").textContent="保存できませんでした。もう一度お試しください。";throw new Error("vault-create")}
 }
-async function unlockWithCode(code){
-  $("unlock-error").textContent="";
-  if(code.some((x,i)=>x!==unlockCode[i])){$("unlock-error").textContent="絵文字の順番が違います。";setTimeout(()=>runPicker("unlock-picker",unlockCode,unlockWithCode),450);return}
-  try{const record=await dbGet(),deviceKey=await dbGet(KEY_RECORD);book=await decryptPart(record.payload,deviceKey,"payload");key=deviceKey;enterApp()}
-  catch{key=null;book=null;$("unlock-error").textContent="データを開けませんでした。";runPicker("unlock-picker",unlockCode,unlockWithCode)}
-}
+function startInitialSetup(){$("setup-heading").textContent="画面ロックを選ぶ";$("setup-lead").textContent="あとから設定で変更できます。";$("setup-error").textContent="";renderLockWizard("setup-picker",createVault,makeLockConfig("emoji",["🐶","🐱"]))}
+$("legacy-reset-open").addEventListener("click",event=>{event.currentTarget.hidden=true;$("legacy-reset-confirm").hidden=false});
+$("legacy-reset-cancel").addEventListener("click",()=>{$("legacy-reset-confirm").hidden=true;$("legacy-reset-open").hidden=false});
+$("legacy-reset-run").addEventListener("click",()=>{if(unlockContext?.legacy)startLegacyMigration(unlockContext)});
 async function init(){
-  if (!window.crypto?.subtle || !window.indexedDB) { showFatal("このブラウザでは暗号化保存を使えません。Safari、Chrome、Firefoxの最新版で開いてください。"); return; }
-  try { db=await openDB(); const record=await dbGet(); if(record){show("unlock-view");await prepareUnlock()}else{show("setup-view");runPicker("setup-picker",null,createVault)} }
-  catch { showFatal("保存データを開けません。ブラウザの設定を確認してください。"); }
+  if(!window.crypto?.subtle||!window.indexedDB){showFatal("このブラウザでは暗号化保存を使えません。Safari、Chrome、Firefoxの最新版で開いてください。");return}
+  try{db=await openDB();const record=await dbGet();if(record){show("unlock-view");await prepareUnlock()}else{show("setup-view");startInitialSetup()}}
+  catch{showFatal("保存データを開けません。ブラウザの設定を確認してください。")}
 }
 function show(id){ ["setup-view","unlock-view","app-view"].forEach(x=>$(x).hidden=x!==id); document.body.classList.toggle("unlocked",id==="app-view"); }
 function showFatal(message){ show("setup-view"); $("setup-view").innerHTML=`<h2>管理ブックを開けません</h2><p class="lead" style="margin-top:.6rem"></p>`; $("setup-view").querySelector("p").textContent=message; }
@@ -154,7 +216,7 @@ function render(){
   const lines=book.lines||[], nowSoon=lines.flatMap(deadlines).filter(x=>{const d=daysUntil(x.date);return d>=0&&d<=30}).length;
   $("active-count").innerHTML=`${lines.filter(x=>x.status!=="cancelled").length}<small>回線</small>`;
   $("soon-count").innerHTML=`${nowSoon}<small>件</small>`;
-  $("auto-lock").value=String(book.settings?.autoLock??15);renderDraftCard();renderCalendarCard();
+  $("auto-lock").value=String(book.settings?.autoLock??15);$("lock-summary").textContent=lockSummary(gateConfig);renderDraftCard();renderCalendarCard();
   const q=escapeSearch($("search").value).replace(/-/g,"");
   const visible=lines.filter(l=>filter==="all"||l.status===filter).filter(l=>{
     const set=lineSet(l),device=lineDevice(l); const hay=[l.phone,l.nickname,l.carrier,l.holder,l.plan,l.store,l.notes,set?.name,set?.email,device?.name,device?.model,device?.imei,device?.eid].map(escapeSearch).join(" ").replace(/-/g,""); return !q||hay.includes(q);
@@ -271,8 +333,8 @@ $("review-settings-open").addEventListener("click",()=>{$("settings-dialog").clo
 $("review-settings-form").addEventListener("submit",async e=>{e.preventDefault();const inputs=[...$("review-settings-list").querySelectorAll("input")],values={};for(const input of inputs){const n=Number(input.value);if(!Number.isInteger(n)||n<1||n>3650){$("review-settings-error").textContent="1日から3650日の範囲で入力してください。";input.focus();return}values[input.dataset.carrier]=n}book.settings.reviewDays=values;book.lines.forEach(line=>{if(!line.reviewDateAuto||!line.contractDate)return;const carrierKey=line.carrierKey&&values[line.carrierKey]?line.carrierKey:CARRIERS[line.carrier]?line.carrier:"other";line.nextDate=addDays(line.contractDate,values[carrierKey]??180);line.updatedAt=Date.now()});try{await persist();$("review-settings-dialog").close();render();toast("設定を保存しました")}catch{$("review-settings-error").textContent="保存できませんでした。"}});
 $("auto-lock").addEventListener("change",async e=>{book.settings.autoLock=Number(e.target.value);await persist();resetIdle();toast("設定を保存しました")});
 $("lock-now").addEventListener("click",lock);
-async function changeEmojiCode(code){try{const old=await dbGet(),gate=await encryptPart({sequence:code},key,"gate");await dbPut({...old,gate,updatedAt:Date.now()});unlockCode=code;$("pass-dialog").close();toast("絵文字キーを変更しました")}catch{$("pass-error").textContent="変更できませんでした。もう一度お試しください。";runPicker("change-picker",null,changeEmojiCode)}}
-$("pass-change-open").addEventListener("click",()=>{$("settings-dialog").close();$("pass-error").textContent="";$("pass-dialog").showModal();runPicker("change-picker",null,changeEmojiCode)});
+async function changeLockConfig(config){$("pass-error").textContent="";try{await writeGateConfig(config,key);gateConfig=config;$("pass-dialog").close();render();toast("画面ロックを変更しました")}catch{$("pass-error").textContent="変更できませんでした。もう一度お試しください。";throw new Error("gate-change")}}
+$("pass-change-open").addEventListener("click",()=>{$("settings-dialog").close();$("pass-error").textContent="";$("pass-dialog").showModal();$("pass-dialog").querySelector(".dialog-body").scrollTop=0;renderLockWizard("change-picker",changeLockConfig,gateConfig)});
 
 document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>$(b.dataset.close).close()));
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close()}));
