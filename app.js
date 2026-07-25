@@ -37,8 +37,8 @@ const RETURN_PROGRAMS = {
   "楽天モバイル":{months:24,name:"楽天モバイル買い替え超トクプログラム"},
   other:{months:24,name:"返却プログラム"}
 };
-let db, key = null, book = null, gateConfig = null, unlockContext = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve(), formReviewAuto = true, draftTimer = null, suppressDraft = false, formDirty = false, skipDraftClose = false;
-const emptyBook = () => ({ schema:"kanri-book", schemaVersion:1, version:1, lines:[], sets:[], devices:[], draft:null, settings:{ autoLock:15,reviewDays:{...DEFAULT_REVIEW_DAYS} }, createdAt:Date.now(), updatedAt:Date.now() });
+let db, key = null, book = null, gateConfig = null, unlockContext = null, filter = "all", viewMode = "line", detailId = null, idleTimer = null, saveQueue = Promise.resolve(), formReviewAuto = true, draftTimer = null, suppressDraft = false, formDirty = false, skipDraftClose = false, sortDraftOrder = [];
+const emptyBook = () => ({ schema:"kanri-book", schemaVersion:1, version:1, lines:[], sets:[], devices:[], draft:null, settings:{ autoLock:15,reviewDays:{...DEFAULT_REVIEW_DAYS},listSort:"default",lineOrder:[] }, createdAt:Date.now(), updatedAt:Date.now() });
 
 const openDB = () => new Promise((resolve,reject) => {
   const req = indexedDB.open(DB_NAME, 1);
@@ -212,15 +212,24 @@ function deadlines(line){
   (line.options||[]).filter(o=>o.date&&!o.done).forEach(o=>items.push({date:o.date,name:o.name||"オプション"}));
   return items.sort((a,b)=>a.date.localeCompare(b.date));
 }
+const SORT_LABELS={default:"現在の並び",manual:"任意の順","contract-desc":"契約日が新しい順","contract-asc":"契約日が古い順"};
+const currentSortMode=()=>Object.hasOwn(SORT_LABELS,book?.settings?.listSort)?book.settings.listSort:"default";
+function normalizedManualOrder(order=book?.settings?.lineOrder,fallback=book?.lines||[]){const lines=book?.lines||[],valid=new Set(lines.map(line=>line.id)),seen=new Set(),result=[];const add=id=>{if(valid.has(id)&&!seen.has(id)){seen.add(id);result.push(id)}};(Array.isArray(order)?order:[]).forEach(add);fallback.forEach(line=>add(typeof line==="string"?line:line.id));lines.forEach(line=>add(line.id));return result;}
+function sortLines(lines){
+  const result=[...lines],sourceIndex=new Map((book.lines||[]).map((line,index)=>[line.id,index])),fallback=(a,b)=>(a.status==="cancelled")-(b.status==="cancelled")||(b.updatedAt||0)-(a.updatedAt||0)||(sourceIndex.get(a.id)||0)-(sourceIndex.get(b.id)||0),mode=currentSortMode();
+  if(mode==="manual"){const rank=new Map(normalizedManualOrder().map((id,index)=>[id,index]));return result.sort((a,b)=>(rank.get(a.id)??Number.MAX_SAFE_INTEGER)-(rank.get(b.id)??Number.MAX_SAFE_INTEGER)||fallback(a,b))}
+  if(mode==="contract-desc"||mode==="contract-asc")return result.sort((a,b)=>{const ad=/^\d{4}-\d{2}-\d{2}$/.test(a.contractDate||"")?a.contractDate:null,bd=/^\d{4}-\d{2}-\d{2}$/.test(b.contractDate||"")?b.contractDate:null;if(!ad||!bd)return(!ad)-(!bd)||fallback(a,b);const compared=ad.localeCompare(bd)*(mode==="contract-desc"?-1:1);return compared||fallback(a,b)});
+  return result.sort(fallback);
+}
 function render(){
   const lines=book.lines||[], nowSoon=lines.flatMap(deadlines).filter(x=>{const d=daysUntil(x.date);return d>=0&&d<=30}).length;
   $("active-count").innerHTML=`${lines.filter(x=>x.status!=="cancelled").length}<small>回線</small>`;
   $("soon-count").innerHTML=`${nowSoon}<small>件</small>`;
-  $("auto-lock").value=String(book.settings?.autoLock??15);$("lock-summary").textContent=lockSummary(gateConfig);renderDraftCard();renderCalendarCard();
+  $("auto-lock").value=String(book.settings?.autoLock??15);$("lock-summary").textContent=lockSummary(gateConfig);$("sort-summary").textContent=SORT_LABELS[currentSortMode()];renderDraftCard();renderCalendarCard();
   const q=escapeSearch($("search").value).replace(/-/g,"");
-  const visible=lines.filter(l=>filter==="all"||l.status===filter).filter(l=>{
+  const visible=sortLines(lines.filter(l=>filter==="all"||l.status===filter).filter(l=>{
     const set=lineSet(l),device=lineDevice(l); const hay=[l.phone,l.nickname,l.carrier,l.holder,l.plan,l.store,l.notes,set?.name,set?.email,device?.name,device?.model,device?.imei,device?.eid].map(escapeSearch).join(" ").replace(/-/g,""); return !q||hay.includes(q);
-  }).sort((a,b)=>(a.status==="cancelled")-(b.status==="cancelled")||(b.updatedAt||0)-(a.updatedAt||0));
+  }));
   const list=$("line-list"); list.replaceChildren();
   if(!visible.length){
     const empty=document.createElement("div"); empty.className="card empty";
@@ -302,11 +311,11 @@ $("line-form").addEventListener("submit",async e=>{
   if(deviceId){const value={id:deviceId,name:$("device-name").value.trim(),model:$("device-model").value.trim(),imei:$("device-imei").value.trim(),eid:$("device-eid").value.trim(),returnSchedule:currentReturnSchedule(),updatedAt:now};const i=book.devices.findIndex(x=>x.id===deviceId);if(i<0)book.devices.push({...value,createdAt:now});else book.devices[i]={...book.devices[i],...value}}
   const line={id,phone:$("phone").value.trim(),phoneDigits:d,nickname:$("nickname").value.trim(),status:$("status").value,carrier:selectedCarrierName(),carrierKey:$("carrier").value||null,holder:$("holder").value.trim(),plan:selectedPlanName(),contractDate:$("contract-date").value,store:$("store").value.trim(),nextAction:$("next-action").value.trim(),nextDate:$("next-date").value,reviewDateAuto:formReviewAuto,pin:$("pin").value,accounts:setId?[]:accounts,setId:setId||null,deviceId:deviceId||null,options,links:{kaisenCheckProfileId:$("kaisen-profile").value||null},notes:$("notes").value.trim(),createdAt:old?.createdAt||now,updatedAt:now};
   const duplicate=book.lines.find(x=>x.id!==id&&digits(x.phone)===d); if(duplicate&&!confirm("同じ電話番号の記録があります。それでも保存しますか？"))return;
-  const index=book.lines.findIndex(x=>x.id===id); if(index<0)book.lines.push(line);else book.lines[index]=line;
+  const index=book.lines.findIndex(x=>x.id===id); if(index<0){book.lines.push(line);if(currentSortMode()==="manual")book.settings.lineOrder=normalizedManualOrder()}else book.lines[index]=line;
   const submit=e.currentTarget.querySelector('[type="submit"]'),pendingDraft=collectFormDraft(true);submit.disabled=true;clearTimeout(draftTimer);book.draft=null;
   try{await persist();skipDraftClose=true;suppressDraft=true;$("line-dialog").close();suppressDraft=false;render();toast("保存しました");}catch{book.draft=pendingDraft;$("form-error").textContent="保存できませんでした。もう一度お試しください。"}finally{submit.disabled=false}
 });
-$("line-delete").addEventListener("click",async()=>{const id=$("line-id").value,line=book.lines.find(x=>x.id===id);if(!line||!confirm(`${formatPhone(line.phone)} の記録を削除しますか？\nこの操作は元に戻せません。`))return;book.lines=book.lines.filter(x=>x.id!==id);book.draft=null;clearTimeout(draftTimer);await persist();skipDraftClose=true;suppressDraft=true;$("line-dialog").close();suppressDraft=false;render();toast("記録を削除しました")});
+$("line-delete").addEventListener("click",async()=>{const id=$("line-id").value,line=book.lines.find(x=>x.id===id);if(!line||!confirm(`${formatPhone(line.phone)} の記録を削除しますか？\nこの操作は元に戻せません。`))return;book.lines=book.lines.filter(x=>x.id!==id);if(Array.isArray(book.settings?.lineOrder))book.settings.lineOrder=book.settings.lineOrder.filter(lineId=>lineId!==id);book.draft=null;clearTimeout(draftTimer);await persist();skipDraftClose=true;suppressDraft=true;$("line-dialog").close();suppressDraft=false;render();toast("記録を削除しました")});
 
 function addDetail(parent,label,value){const x=document.createElement("div");x.className="detail-item";const s=document.createElement("span");s.textContent=label;const b=document.createElement("strong");b.textContent=value||"未記録";x.append(s,b);parent.append(x)}
 function secretRow(value){const wrap=document.createElement("div");wrap.className="detail-secret";const code=document.createElement("code");code.textContent=value?"••••••••":"未記録";const btn=document.createElement("button");btn.type="button";btn.textContent="表示";let shown=false;btn.onclick=()=>{shown=!shown;code.textContent=shown?(value||"未記録"):(value?"••••••••":"未記録");btn.textContent=shown?"隠す":"表示"};wrap.append(code,btn);return wrap}
@@ -326,6 +335,21 @@ $("detail-edit").addEventListener("click",()=>{const l=book.lines.find(x=>x.id==
 $("add-open").addEventListener("click",openNewForm); $("search").addEventListener("input",render);
 document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{viewMode=b.dataset.view;document.querySelectorAll("[data-view]").forEach(x=>x.classList.toggle("active",x===b));render()}));
 document.querySelectorAll(".filter-chip").forEach(b=>b.addEventListener("click",()=>{filter=b.dataset.filter;document.querySelectorAll(".filter-chip").forEach(x=>x.classList.toggle("active",x===b));render()}));
+
+function renderManualOrder(focusId=null,direction=0){
+  const list=$("manual-order-list");list.replaceChildren();
+  if(!sortDraftOrder.length){const empty=document.createElement("p");empty.className="hint";empty.textContent="回線を登録すると並び替えできます。";list.append(empty);return}
+  sortDraftOrder.forEach((id,index)=>{const line=book.lines.find(item=>item.id===id);if(!line)return;const row=document.createElement("div");row.className="manual-order-row";row.dataset.lineId=id;const number=document.createElement("span");number.className="manual-order-number";number.textContent=String(index+1);const main=document.createElement("div");main.className="manual-order-main";const phone=document.createElement("strong");phone.textContent=formatPhone(line.phone);const detail=document.createElement("span");detail.textContent=[line.nickname,line.carrier].filter(Boolean).join(" · ")||"契約情報";main.append(phone,detail);const actions=document.createElement("div");actions.className="manual-order-actions";[[-1,"↑","上へ"],[1,"↓","下へ"]].forEach(([delta,symbol,label])=>{const button=document.createElement("button");button.type="button";button.className="manual-move";button.dataset.delta=String(delta);button.textContent=symbol;button.disabled=delta<0?index===0:index===sortDraftOrder.length-1;button.setAttribute("aria-label",`${formatPhone(line.phone)}を${label}`);button.onclick=()=>{const next=index+delta;[sortDraftOrder[index],sortDraftOrder[next]]=[sortDraftOrder[next],sortDraftOrder[index]];renderManualOrder(id,delta)};actions.append(button)});row.append(number,main,actions);list.append(row)});
+  if(focusId){const row=[...list.children].find(item=>item.dataset.lineId===focusId),preferred=row?.querySelector(`[data-delta="${direction}"]:not(:disabled)`);(preferred||row?.querySelector(".manual-move:not(:disabled)"))?.focus()}
+}
+function updateSortDialog(){const manual=$("sort-mode").value==="manual";$("manual-order-panel").hidden=!manual;if(manual)renderManualOrder()}
+function openSortDialog(){
+  const saved=Array.isArray(book.settings?.lineOrder)?book.settings.lineOrder:[],hasSaved=saved.some(id=>book.lines.some(line=>line.id===id)),fallback=hasSaved?book.lines:sortLines(book.lines);
+  sortDraftOrder=normalizedManualOrder(saved,fallback);$("sort-mode").value=currentSortMode();$("sort-error").textContent="";updateSortDialog();$("sort-dialog").showModal();$("sort-dialog").querySelector(".dialog-body").scrollTop=0;
+}
+$("sort-open").addEventListener("click",openSortDialog);
+$("sort-mode").addEventListener("change",updateSortDialog);
+$("sort-form").addEventListener("submit",async event=>{event.preventDefault();const mode=$("sort-mode").value;if(!Object.hasOwn(SORT_LABELS,mode))return;const oldSettings=structuredClone(book.settings),oldUpdatedAt=book.updatedAt,submit=event.currentTarget.querySelector('[type="submit"]');submit.disabled=true;$("sort-error").textContent="";book.settings.listSort=mode;if(mode==="manual")book.settings.lineOrder=normalizedManualOrder(sortDraftOrder);try{await persist();$("sort-dialog").close();render();toast("並び順を保存しました")}catch{book.settings=oldSettings;book.updatedAt=oldUpdatedAt;render();$("sort-error").textContent="保存できませんでした。もう一度お試しください。"}finally{submit.disabled=false}});
 
 $("settings-open").addEventListener("click",()=>$("settings-dialog").showModal());
 function renderReviewSettings(){const list=$("review-settings-list");list.replaceChildren();[...Object.keys(CARRIERS),"other"].forEach((carrier,index)=>{const row=document.createElement("div");row.className="review-setting-row";const label=document.createElement("label");label.htmlFor=`review-carrier-${index}`;label.textContent=carrier==="other"?"その他":carrier;const wrap=document.createElement("div");wrap.className="review-day-input";const input=document.createElement("input");input.id=`review-carrier-${index}`;input.className="control";input.type="number";input.inputMode="numeric";input.min="1";input.max="3650";input.required=true;input.value=reviewDaysFor(carrier);input.dataset.carrier=carrier;wrap.append(input,document.createTextNode("日"));row.append(label,wrap);list.append(row)})}

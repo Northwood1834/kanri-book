@@ -138,6 +138,10 @@ textarea.control { min-height:5.5rem; resize:vertical; }
 .view-switch { display:grid; grid-template-columns:repeat(3,1fr); gap:.25rem; padding:.25rem; border:1px solid var(--line); border-radius:.85rem; background:#E9F2EB; }
 .view-switch button { border:0; border-radius:.65rem; padding:.47rem .2rem; color:var(--muted); background:transparent; font-size:.68rem; font-weight:800; }
 .view-switch button.active { color:var(--accent-deep); background:white; box-shadow:0 2px 8px rgba(67,136,90,.1); }
+.sort-open { width:100%; min-height:2.7rem; display:flex; align-items:center; gap:.65rem; padding:.58rem .78rem; border:1.5px solid var(--line); border-radius:.85rem; background:rgba(255,255,255,.78); color:var(--ink); text-align:left; }
+.sort-open .sort-label { color:var(--muted); font-size:.65rem; font-weight:750; }
+.sort-open strong { flex:1; font-size:.73rem; }
+.sort-open svg { width:1rem; color:var(--accent-deep); }
 .filter-chips { display:flex; gap:.45rem; overflow:auto; scrollbar-width:none; padding:.05rem; }
 .filter-chips::-webkit-scrollbar { display:none; }
 .filter-chip { white-space:nowrap; border:1.5px solid var(--line); color:var(--muted); background:white; border-radius:999px; padding:.43rem .72rem; font-size:.7rem; font-weight:750; }
@@ -206,6 +210,7 @@ dialog::backdrop { background:rgba(38,57,44,.34); backdrop-filter:blur(3px); }
 .check-row input { width:1.05rem; height:1.05rem; accent-color:var(--accent); }
 .dialog-actions { flex:0 0 auto; display:flex; gap:.55rem; padding:.75rem 1.1rem calc(.75rem + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:white; }
 .dialog-actions .primary { margin:0; min-height:2.85rem; }
+.dialog-cancel { flex:0 0 auto; min-height:2.85rem; border:1.5px solid var(--line); border-radius:999px; padding:.65rem 1rem; background:white; color:var(--muted); font-size:.72rem; font-weight:800; }
 .danger-btn { flex:0 0 auto; white-space:nowrap; border:1.5px solid #EBCFD1; background:var(--danger-bg); color:var(--danger); border-radius:999px; padding:.65rem .9rem; font-size:.72rem; font-weight:800; }
 .detail-secret { display:flex; gap:.4rem; align-items:center; }
 .detail-secret code { flex:1; min-width:0; padding:.45rem .55rem; border-radius:.55rem; background:#F5F8F5; font-family:ui-monospace,SFMono-Regular,monospace; overflow:hidden; text-overflow:ellipsis; }
@@ -224,6 +229,18 @@ dialog::backdrop { background:rgba(38,57,44,.34); backdrop-filter:blur(3px); }
 .setting-row strong { display:block; font-size:.78rem; }
 .setting-row p { margin-top:.08rem; color:var(--muted); font-size:.65rem; }
 .setting-row select { max-width:8rem; border:1.5px solid var(--line); border-radius:.7rem; background:white; padding:.45rem; font-size:.74rem; }
+.manual-order-panel { margin-top:1rem; }
+.manual-order-panel > .hint { margin-bottom:.65rem; }
+.manual-order-list { display:grid; gap:.5rem; }
+.manual-order-row { display:grid; grid-template-columns:1.65rem minmax(0,1fr) auto; align-items:center; gap:.55rem; padding:.58rem; border:1px solid var(--line); border-radius:.85rem; background:#FAFCFA; }
+.manual-order-number { width:1.65rem; height:1.65rem; display:grid; place-items:center; border-radius:50%; background:var(--accent-soft); color:var(--accent-deep); font-size:.67rem; font-weight:850; }
+.manual-order-main { min-width:0; }
+.manual-order-main strong,.manual-order-main span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.manual-order-main strong { font-size:.75rem; font-variant-numeric:tabular-nums; }
+.manual-order-main span { margin-top:.05rem; color:var(--muted); font-size:.62rem; }
+.manual-order-actions { display:flex; gap:.25rem; }
+.manual-move { width:2.5rem; height:2.5rem; border:1px solid var(--line); border-radius:.65rem; background:white; color:var(--accent-deep); font-size:.95rem; font-weight:850; }
+.manual-move:disabled { opacity:.45; }
 .storage-fact { margin-top:.9rem; padding:.8rem; border-radius:.8rem; background:#F6FAF7; color:var(--muted); font-size:.68rem; }
 .review-settings-list { margin-top:.75rem; display:grid; }
 .review-setting-row { display:grid; grid-template-columns:1fr 5.8rem; align-items:center; gap:.7rem; padding:.55rem 0; border-bottom:1px dashed var(--line); }
@@ -315,6 +332,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
       <button type="button" data-view="device">端末ごと</button>
       <button type="button" data-view="set">利用セットごと</button>
     </div>
+    <button id="sort-open" class="sort-open" type="button"><span class="sort-label">並び順</span><strong id="sort-summary">現在の並び</strong><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></button>
     <label class="search-wrap"><span class="sr-only">回線を検索</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg><input id="search" class="control" type="search" inputmode="search" autocomplete="off" placeholder="番号・キャリア・端末・メールで検索"></label>
     <div class="filter-chips" aria-label="表示する回線">
       <button class="filter-chip active" type="button" data-filter="all">すべて</button>
@@ -339,7 +357,7 @@ body.unlocked .dog .tail { animation-duration:.55s; }
     <span>大切な記録は、あなたの端末の中だけに。</span>
     <a class="companion-link" href="https://northwood1834.github.io/kaisen-check/" target="_blank" rel="noopener noreferrer">回線チェックを開く ↗</a>
     <span class="credit"><img src="author.png" alt="" width="20" height="20">作者: <a href="https://instagram.com/mumupoikatsu" target="_blank" rel="noopener noreferrer">mumupoikatsu</a></span>
-    <span>© mumupoikatsu · 管理ブック v1.3</span>
+    <span>© mumupoikatsu · 管理ブック v1.4</span>
     <button type="button" class="reload-link" id="reload-latest">最新版を読み込む</button>
   </footer>
 </main>
@@ -472,8 +490,20 @@ body.unlocked .dog .tail { animation-duration:.55s; }
   <div class="dialog-body"><div id="change-picker" class="lock-wizard" aria-live="polite"></div><p id="pass-error" class="inline-error" role="alert"></p></div>
 </div>
 </dialog>
+
+<dialog id="sort-dialog">
+<form id="sort-form" class="dialog-shell" method="dialog">
+  <div class="dialog-head"><h2>回線の並び順</h2><button class="close-btn" type="button" data-close="sort-dialog" aria-label="閉じる">×</button></div>
+  <div class="dialog-body">
+    <label class="field"><span>並べ方</span><select id="sort-mode" class="control"><option value="default">現在の並び（終了を下・更新が新しい順）</option><option value="manual">任意の順</option><option value="contract-desc">契約日が新しい順</option><option value="contract-asc">契約日が古い順</option></select></label>
+    <section id="manual-order-panel" class="manual-order-panel" hidden><p class="hint">すべての回線を表示しています。矢印で移動し、最後に保存してください。</p><div id="manual-order-list" class="manual-order-list"></div></section>
+    <p id="sort-error" class="inline-error" role="alert"></p>
+  </div>
+  <div class="dialog-actions"><button class="dialog-cancel" type="button" data-close="sort-dialog">やめる</button><button class="primary" type="submit">保存</button></div>
+</form>
+</dialog>
 <div id="toast" class="toast" role="status"></div>
 
-<script src="app.js?v=1.3" defer></script>
+<script src="app.js?v=1.4" defer></script>
 </body>
 </html>

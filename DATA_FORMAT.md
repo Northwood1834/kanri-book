@@ -37,6 +37,11 @@ are used for all entities. A line refers to a set through `setId`, a device
 through `deviceId`, and a 回線チェック profile through
 `links.kaisenCheckProfileId`.
 
+The encrypted `settings` object may contain `listSort` and `lineOrder`.
+`listSort` selects the list comparator, while `lineOrder` contains stable line
+IDs for manual ordering. Missing IDs are appended safely and stale IDs are
+ignored; sorting never rewrites the line records themselves.
+
 ## 回線チェック compatibility
 
 When both apps are deployed below the same HTTPS origin (for example as two
